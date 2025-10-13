@@ -22,7 +22,7 @@ class ProductNotifier extends StateNotifier<List<Product>> {
     state = _productBox!.values.toList();
   }
 
-  Future<void> addProduct({
+  Future<Product> addProduct({
     required String name,
     required String category,
     required double buyingPrice,
@@ -44,6 +44,7 @@ class ProductNotifier extends StateNotifier<List<Product>> {
 
     await _productBox?.put(product.id, product);
     state = [...state, product];
+    return product;
   }
 
   Future<void> updateProduct(Product product) async {

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../models/transaction.dart';
+import '../models/product.dart';
 import '../providers/inventory_provider.dart';
+import '../widgets/qr_scanner_dialog.dart';
 
 class PurchaseScreen extends ConsumerStatefulWidget {
   const PurchaseScreen({super.key});
@@ -12,99 +14,215 @@ class PurchaseScreen extends ConsumerStatefulWidget {
 }
 
 class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
-  String? selectedProductId;
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _categoryController = TextEditingController();
+  final _buyingPriceController = TextEditingController();
+  final _sellingPriceController = TextEditingController();
   final _quantityController = TextEditingController();
+  final _descriptionController = TextEditingController();
   final _notesController = TextEditingController();
+  final _searchController = TextEditingController();
+
+  bool _isTypingCategory = false;
+  Product? _selectedExistingProduct;
+  bool _showProductSuggestions = false;
+  String _searchQuery = '';
 
   @override
   void dispose() {
+    _nameController.dispose();
+    _categoryController.dispose();
+    _buyingPriceController.dispose();
+    _sellingPriceController.dispose();
     _quantityController.dispose();
+    _descriptionController.dispose();
     _notesController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
-  void _recordPurchase() async {
-    if (selectedProductId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Please select a product'),
-          backgroundColor: Colors.orange,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
-      return;
-    }
+  void _onProductNameChanged(String value) {
+    setState(() {
+      _showProductSuggestions = value.isNotEmpty;
+      _searchQuery = value;
 
-    if (_quantityController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Please enter quantity'),
-          backgroundColor: Colors.orange,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
-      return;
-    }
+      // Check if the entered name exactly matches an existing product
+      final products = ref.read(productProvider);
+      final exactMatch = products.where((p) => p.name.toLowerCase() == value.toLowerCase()).firstOrNull;
 
-    final quantity = int.tryParse(_quantityController.text);
-    if (quantity == null || quantity <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Please enter a valid quantity'),
-          backgroundColor: Colors.orange,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
-      return;
-    }
+      if (exactMatch != null && _selectedExistingProduct?.id != exactMatch.id) {
+        _selectProduct(exactMatch);
+      } else if (exactMatch == null) {
+        _selectedExistingProduct = null;
+      }
+    });
+  }
 
-    final product = ref.read(productProvider.notifier).getProductById(selectedProductId!);
-    if (product == null) return;
+  void _selectProduct(Product product) {
+    setState(() {
+      _selectedExistingProduct = product;
+      _nameController.text = product.name;
+      _searchController.text = product.name;
+      _categoryController.text = product.category;
+      _buyingPriceController.text = product.buyingPrice.toStringAsFixed(2);
+      _sellingPriceController.text = product.sellingPrice.toStringAsFixed(2);
+      _descriptionController.text = product.description ?? '';
+      _showProductSuggestions = false;
+      _searchQuery = '';
+      _quantityController.clear(); // Clear quantity as user needs to enter new stock
+    });
+  }
 
-    await ref.read(productProvider.notifier).updateProductQuantity(
-          selectedProductId!,
-          product.quantity + quantity,
-        );
-
-    final transaction = Transaction(
-      id: const Uuid().v4(),
-      productId: product.id,
-      productName: product.name,
-      quantity: quantity,
-      pricePerUnit: product.buyingPrice,
-      totalAmount: product.buyingPrice * quantity,
-      type: 'purchase',
-      createdAt: DateTime.now(),
-      notes: _notesController.text.isEmpty ? null : _notesController.text,
+  Future<void> _scanQRCode() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => const QRScannerDialog(),
     );
 
-    await ref.read(transactionProvider.notifier).addTransaction(transaction);
-    await ref.read(accountProvider.notifier).recordPurchase(transaction.totalAmount);
+    if (result != null && mounted) {
+      // The QR code contains the product ID
+      final product = ref.read(productProvider.notifier).getProductById(result);
+      if (product != null) {
+        _selectProduct(product);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Product "${product.name}" selected for restocking'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Product not found'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      }
+    }
+  }
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Purchase recorded: $quantity x ${product.name}'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+  void _savePurchase() async {
+    if (_formKey.currentState!.validate()) {
+      final quantity = int.parse(_quantityController.text);
+      final buyingPrice = double.parse(_buyingPriceController.text);
+      final totalCost = buyingPrice * quantity;
 
-      setState(() {
-        selectedProductId = null;
-        _quantityController.clear();
-        _notesController.clear();
-      });
+      if (_selectedExistingProduct != null) {
+        // Update existing product
+        final updatedProduct = Product(
+          id: _selectedExistingProduct!.id,
+          name: _nameController.text.trim(),
+          category: _categoryController.text.trim(),
+          buyingPrice: buyingPrice,
+          sellingPrice: double.parse(_sellingPriceController.text),
+          quantity: _selectedExistingProduct!.quantity + quantity, // Add to existing quantity
+          description: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+          createdAt: _selectedExistingProduct!.createdAt,
+          updatedAt: DateTime.now(),
+        );
+
+        await ref.read(productProvider.notifier).updateProduct(updatedProduct);
+
+        // Record transaction
+        final transaction = Transaction(
+          id: const Uuid().v4(),
+          productId: updatedProduct.id,
+          productName: updatedProduct.name,
+          quantity: quantity,
+          pricePerUnit: buyingPrice,
+          totalAmount: totalCost,
+          type: 'purchase',
+          createdAt: DateTime.now(),
+          notes: _notesController.text.isEmpty ? null : _notesController.text,
+        );
+
+        await ref.read(transactionProvider.notifier).addTransaction(transaction);
+        await ref.read(accountProvider.notifier).recordPurchase(totalCost);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Purchase recorded: ${updatedProduct.name}\nQuantity: ${_selectedExistingProduct!.quantity} → ${updatedProduct.quantity} (+$quantity)\nCost: \$${totalCost.toStringAsFixed(2)}',
+              ),
+              backgroundColor: Colors.blue,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      } else {
+        // Add new product
+        final newProduct = await ref.read(productProvider.notifier).addProduct(
+          name: _nameController.text.trim(),
+          category: _categoryController.text.trim(),
+          buyingPrice: buyingPrice,
+          sellingPrice: double.parse(_sellingPriceController.text),
+          quantity: quantity,
+          description: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+        );
+
+        // Record transaction
+        final transaction = Transaction(
+          id: const Uuid().v4(),
+          productId: newProduct.id,
+          productName: newProduct.name,
+          quantity: quantity,
+          pricePerUnit: buyingPrice,
+          totalAmount: totalCost,
+          type: 'purchase',
+          createdAt: DateTime.now(),
+          notes: _notesController.text.isEmpty ? null : _notesController.text,
+        );
+
+        await ref.read(transactionProvider.notifier).addTransaction(transaction);
+        await ref.read(accountProvider.notifier).recordPurchase(totalCost);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'New product added & purchase recorded!\n${newProduct.name} x $quantity\nCost: \$${totalCost.toStringAsFixed(2)}',
+              ),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+
+      // Clear form after save
+      if (mounted) {
+        setState(() {
+          _nameController.clear();
+          _searchController.clear();
+          _categoryController.clear();
+          _buyingPriceController.clear();
+          _sellingPriceController.clear();
+          _quantityController.clear();
+          _descriptionController.clear();
+          _notesController.clear();
+          _isTypingCategory = false;
+          _selectedExistingProduct = null;
+          _showProductSuggestions = false;
+          _searchQuery = '';
+        });
+        _formKey.currentState?.reset();
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final products = ref.watch(productProvider);
+    final allProducts = ref.watch(productProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
@@ -112,249 +230,274 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(32),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 900),
+            constraints: const BoxConstraints(maxWidth: 1000),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Header
                 Text(
-                  'Add Purchase',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade900,
-                  ),
+                  _selectedExistingProduct == null ? 'Purchase & Add Product' : 'Restock Product',
+                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.grey.shade900),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Record new inventory purchases',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey.shade600,
-                  ),
+                  _selectedExistingProduct == null
+                      ? 'Add new products or restock existing ones'
+                      : 'Update quantity and prices for existing product',
+                  style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
                 ),
                 const SizedBox(height: 32),
 
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.all(32),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                // Form Card
+                Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Row 1: Product Name with QR Scanner & Category
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            DropdownButtonFormField<String>(
-                              value: selectedProductId,
-                              decoration: InputDecoration(
-                                labelText: 'Select Product',
-                                labelStyle: TextStyle(color: Colors.grey.shade700),
-                                prefixIcon: const Icon(Icons.inventory_2, color: Color(0xFFF59E0B)),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: Colors.grey.shade300),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: Colors.grey.shade300),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(color: Color(0xFFF59E0B), width: 2),
-                                ),
-                                filled: true,
-                                fillColor: Colors.grey.shade50,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                              ),
-                              items: products.map((product) {
-                                return DropdownMenuItem(
-                                  value: product.id,
-                                  child: Text('${product.name} (\$${product.buyingPrice.toStringAsFixed(2)})'),
-                                );
-                              }).toList(),
-                              onChanged: (value) {
-                                setState(() {
-                                  selectedProductId = value;
-                                });
-                              },
-                            ),
-                            const SizedBox(height: 24),
-
-                            TextFormField(
-                              controller: _quantityController,
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => setState(() {}),
-                              decoration: InputDecoration(
-                                labelText: 'Quantity',
-                                labelStyle: TextStyle(color: Colors.grey.shade700),
-                                prefixIcon: const Icon(Icons.production_quantity_limits, color: Color(0xFFF59E0B)),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: Colors.grey.shade300),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: Colors.grey.shade300),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(color: Color(0xFFF59E0B), width: 2),
-                                ),
-                                filled: true,
-                                fillColor: Colors.grey.shade50,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-
-                            TextFormField(
-                              controller: _notesController,
-                              maxLines: 3,
-                              decoration: InputDecoration(
-                                labelText: 'Notes (Optional)',
-                                labelStyle: TextStyle(color: Colors.grey.shade700),
-                                prefixIcon: const Icon(Icons.notes, color: Color(0xFFF59E0B)),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: Colors.grey.shade300),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: Colors.grey.shade300),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(color: Color(0xFFF59E0B), width: 2),
-                                ),
-                                filled: true,
-                                fillColor: Colors.grey.shade50,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 24),
-
-                    Container(
-                      width: 300,
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Purchase Summary',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey.shade900,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-
-                          if (selectedProductId != null) ...[
-                            Builder(
-                              builder: (context) {
-                                final product = products.firstWhere((p) => p.id == selectedProductId);
-                                final quantity = int.tryParse(_quantityController.text) ?? 0;
-                                final total = product.buyingPrice * quantity;
-
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _buildDetailRow('Product', product.name),
-                                    const SizedBox(height: 12),
-                                    _buildDetailRow('Current Stock', '${product.quantity}'),
-                                    const SizedBox(height: 12),
-                                    _buildDetailRow('Unit Price', '\$${product.buyingPrice.toStringAsFixed(2)}'),
-                                    const SizedBox(height: 12),
-                                    _buildDetailRow('Quantity', quantity > 0 ? '$quantity' : '-'),
-                                    const Divider(height: 32),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          'Total Cost',
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.grey.shade900,
-                                          ),
-                                        ),
-                                        Text(
-                                          '\$${total.toStringAsFixed(2)}',
-                                          style: const TextStyle(
-                                            fontSize: 24,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFFF59E0B),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ] else ...[
-                            Center(
+                            Expanded(
                               child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Icon(Icons.shopping_bag, size: 48, color: Colors.grey.shade300),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    'Select a product\nto see details',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(color: Colors.grey.shade500),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            _buildProductNameField(allProducts),
+                                            if (_showProductSuggestions) _buildProductSuggestions(allProducts),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Container(
+                                        height: 56,
+                                        width: 56,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF59E0B),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: IconButton(
+                                          onPressed: _scanQRCode,
+                                          icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+                                          tooltip: 'Scan QR Code',
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
                             ),
+                            const SizedBox(width: 16),
+                            Expanded(child: _buildCategoryField()),
                           ],
+                        ),
+                        const SizedBox(height: 24),
 
-                          const SizedBox(height: 24),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: _recordPurchase,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFFF59E0B),
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              child: const Text(
-                                'Record Purchase',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        // Row 2: Buying Price & Selling Price
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildTextField(
+                                controller: _buyingPriceController,
+                                label: 'Buying Price',
+                                icon: Icons.attach_money,
+                                keyboardType: TextInputType.number,
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please enter buying price';
+                                  }
+                                  if (double.tryParse(value) == null) {
+                                    return 'Please enter a valid number';
+                                  }
+                                  if (double.parse(value) < 0) {
+                                    return 'Price cannot be negative';
+                                  }
+                                  return null;
+                                },
                               ),
                             ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildTextField(
+                                controller: _sellingPriceController,
+                                label: 'Selling Price',
+                                icon: Icons.sell,
+                                keyboardType: TextInputType.number,
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please enter selling price';
+                                  }
+                                  if (double.tryParse(value) == null) {
+                                    return 'Please enter a valid number';
+                                  }
+                                  if (double.parse(value) < 0) {
+                                    return 'Price cannot be negative';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Row 3: Quantity
+                        _buildTextField(
+                          controller: _quantityController,
+                          label: _selectedExistingProduct == null ? 'Initial Quantity' : 'Add Quantity',
+                          hint: _selectedExistingProduct != null ? 'Current: ${_selectedExistingProduct!.quantity}' : null,
+                          icon: Icons.production_quantity_limits,
+                          keyboardType: TextInputType.number,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter quantity';
+                            }
+                            if (int.tryParse(value) == null) {
+                              return 'Please enter a valid number';
+                            }
+                            if (int.parse(value) <= 0) {
+                              return 'Quantity must be greater than 0';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Row 4: Description
+                        _buildTextField(
+                          controller: _descriptionController,
+                          label: 'Description (Optional)',
+                          icon: Icons.description,
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Row 5: Notes
+                        _buildTextField(
+                          controller: _notesController,
+                          label: 'Purchase Notes (Optional)',
+                          icon: Icons.notes,
+                          hint: 'e.g., Supplier name, invoice number',
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 32),
+
+                        // Purchase Summary Card
+                        if (_quantityController.text.isNotEmpty && _buyingPriceController.text.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF59E0B).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Total Purchase Cost',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey.shade700,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${_quantityController.text} units × \$${_buyingPriceController.text}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Text(
+                                  '\$${((int.tryParse(_quantityController.text) ?? 0) * (double.tryParse(_buyingPriceController.text) ?? 0)).toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFFF59E0B),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
-                      ),
+                        const SizedBox(height: 24),
+
+                        // Submit Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _nameController.clear();
+                                    _searchController.clear();
+                                    _categoryController.clear();
+                                    _buyingPriceController.clear();
+                                    _sellingPriceController.clear();
+                                    _quantityController.clear();
+                                    _descriptionController.clear();
+                                    _notesController.clear();
+                                    _isTypingCategory = false;
+                                    _selectedExistingProduct = null;
+                                    _showProductSuggestions = false;
+                                    _searchQuery = '';
+                                  });
+                                  _formKey.currentState?.reset();
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  side: BorderSide(color: Colors.grey.shade300),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                child: Text('Clear Form', style: TextStyle(fontSize: 16, color: Colors.grey.shade700)),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              flex: 2,
+                              child: ElevatedButton(
+                                onPressed: _savePurchase,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFF59E0B),
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                child: Text(
+                                  _selectedExistingProduct == null ? 'Add & Purchase' : 'Restock & Purchase',
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -364,23 +507,298 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+  Widget _buildProductNameField(List<Product> allProducts) {
+    return TextFormField(
+      controller: _nameController,
+      onChanged: _onProductNameChanged,
+      onTap: () {
+        setState(() {
+          _showProductSuggestions = _nameController.text.isNotEmpty;
+        });
+      },
+      style: const TextStyle(fontSize: 15),
+      decoration: InputDecoration(
+        labelText: 'Product Name',
+        hintText: 'Start typing or scan QR code...',
+        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+        labelStyle: TextStyle(color: Colors.grey.shade700),
+        prefixIcon: const Icon(Icons.inventory_2, color: Color(0xFFF59E0B), size: 20),
+        suffixIcon: _selectedExistingProduct != null
+            ? Container(
+                margin: const EdgeInsets.all(8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'RESTOCK',
+                  style: TextStyle(
+                    color: Colors.blue.shade700,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              )
+            : null,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
         ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey.shade800,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFFF59E0B), width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.red, width: 1),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
+        ),
+        filled: true,
+        fillColor: Colors.grey.shade50,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      ),
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Please enter product name';
+        }
+        return null;
+      },
+    );
+  }
+
+  Widget _buildProductSuggestions(List<Product> allProducts) {
+    final matchingProducts = allProducts
+        .where((p) =>
+          p.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          p.category.toLowerCase().contains(_searchQuery.toLowerCase()))
+        .take(5)
+        .toList();
+
+    if (matchingProducts.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-        ),
+        ],
+      ),
+      child: ListView.builder(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: matchingProducts.length,
+        itemBuilder: (context, index) {
+          final product = matchingProducts[index];
+          return ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.inventory_2, color: Colors.orange.shade700, size: 20),
+            ),
+            title: Text(
+              product.name,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+            subtitle: Text(
+              '${product.category} • Stock: ${product.quantity} • \$${product.buyingPrice.toStringAsFixed(2)}',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+            onTap: () => _selectProduct(product),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildCategoryField() {
+    final products = ref.watch(productProvider);
+    final existingCategories = products.map((p) => p.category).toSet().toList()..sort();
+
+    final dropdownValue = _categoryController.text.isEmpty || !existingCategories.contains(_categoryController.text)
+        ? null
+        : _categoryController.text;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!_isTypingCategory && existingCategories.isNotEmpty)
+          DropdownButtonFormField<String>(
+            value: dropdownValue,
+            decoration: InputDecoration(
+              labelText: 'Category',
+              labelStyle: TextStyle(color: Colors.grey.shade700),
+              prefixIcon: const Icon(Icons.category, color: Color(0xFFF59E0B), size: 20),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.edit, size: 18),
+                tooltip: 'Type new category',
+                onPressed: () {
+                  setState(() {
+                    _isTypingCategory = true;
+                  });
+                },
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFFF59E0B), width: 2),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Colors.red, width: 1),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Colors.red, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.grey.shade50,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            ),
+            hint: const Text('Select or type category'),
+            items: existingCategories.map((category) {
+              return DropdownMenuItem(value: category, child: Text(category));
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                _categoryController.text = value ?? '';
+              });
+            },
+            validator: (value) {
+              if (_categoryController.text.isEmpty) {
+                return 'Please select or enter category';
+              }
+              return null;
+            },
+          )
+        else
+          TextFormField(
+            controller: _categoryController,
+            style: const TextStyle(fontSize: 15),
+            decoration: InputDecoration(
+              labelText: 'Category',
+              hintText: 'e.g., Helmet, Tire, Chain',
+              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+              labelStyle: TextStyle(color: Colors.grey.shade700),
+              prefixIcon: const Icon(Icons.category, color: Color(0xFFF59E0B), size: 20),
+              suffixIcon: existingCategories.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.arrow_drop_down, size: 24),
+                      tooltip: 'Select from existing',
+                      onPressed: () {
+                        setState(() {
+                          _isTypingCategory = false;
+                        });
+                      },
+                    )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFFF59E0B), width: 2),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Colors.red, width: 1),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Colors.red, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.grey.shade50,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            ),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter category';
+              }
+              return null;
+            },
+          ),
       ],
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    String? hint,
+    TextInputType? keyboardType,
+    int maxLines = 1,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      validator: validator,
+      onChanged: (_) => setState(() {}),
+      style: const TextStyle(fontSize: 15),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+        labelStyle: TextStyle(color: Colors.grey.shade700),
+        prefixIcon: Icon(icon, color: const Color(0xFFF59E0B), size: 20),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFFF59E0B), width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.red, width: 1),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
+        ),
+        filled: true,
+        fillColor: Colors.grey.shade50,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      ),
     );
   }
 }

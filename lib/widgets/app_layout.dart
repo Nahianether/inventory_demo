@@ -112,12 +112,6 @@ class _AppLayoutState extends State<AppLayout> {
                         isActive: widget.currentRoute == '/inventory',
                       ),
                       _buildNavItem(
-                        icon: Icons.add_circle_rounded,
-                        label: 'Add Product',
-                        route: '/add-product',
-                        isActive: widget.currentRoute == '/add-product',
-                      ),
-                      _buildNavItem(
                         icon: Icons.shopping_cart_rounded,
                         label: 'Purchase',
                         route: '/purchase',
