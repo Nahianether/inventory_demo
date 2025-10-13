@@ -16,11 +16,15 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
   String? selectedProductId;
   final _quantityController = TextEditingController();
   final _notesController = TextEditingController();
+  final _searchController = TextEditingController();
+  bool _showProductSuggestions = false;
+  String _searchQuery = '';
 
   @override
   void dispose() {
     _quantityController.dispose();
     _notesController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -36,6 +40,8 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
       if (product != null && product.isInStock) {
         setState(() {
           selectedProductId = result;
+          _searchController.text = product.name;
+          _showProductSuggestions = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -146,8 +152,10 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
 
       setState(() {
         selectedProductId = null;
+        _searchController.clear();
         _quantityController.clear();
         _notesController.clear();
+        _showProductSuggestions = false;
       });
     }
   }
@@ -220,43 +228,87 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
                               )
                             else ...[
                               Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Expanded(
-                                    child: DropdownButtonFormField<String>(
-                                      value: selectedProductId,
-                                      decoration: InputDecoration(
-                                        labelText: 'Select Product',
-                                        labelStyle: TextStyle(color: Colors.grey.shade700),
-                                        prefixIcon: const Icon(Icons.shopping_cart, color: Color(0xFF10B981)),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                          borderSide: BorderSide(color: Colors.grey.shade300),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                          borderSide: BorderSide(color: Colors.grey.shade300),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                          borderSide: const BorderSide(color: Color(0xFF10B981), width: 2),
-                                        ),
-                                        filled: true,
-                                        fillColor: Colors.grey.shade50,
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                      ),
-                                      items: products.map((product) {
-                                        return DropdownMenuItem(
-                                          value: product.id,
-                                          child: Text(
-                                            '${product.name} (\$${product.sellingPrice.toStringAsFixed(2)}) - Stock: ${product.quantity}',
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                                      children: [
+                                        TextFormField(
+                                          controller: _searchController,
+                                          onChanged: (value) {
+                                            setState(() {
+                                              _searchQuery = value;
+                                              _showProductSuggestions = value.isNotEmpty;
+                                              // Clear selection if text doesn't match
+                                              if (selectedProductId != null) {
+                                                try {
+                                                  final product = products.firstWhere(
+                                                    (p) => p.id == selectedProductId,
+                                                  );
+                                                  if (product.name != value) {
+                                                    selectedProductId = null;
+                                                  }
+                                                } catch (e) {
+                                                  selectedProductId = null;
+                                                }
+                                              }
+                                            });
+                                          },
+                                          decoration: InputDecoration(
+                                            labelText: 'Search Product',
+                                            labelStyle: TextStyle(color: Colors.grey.shade700),
+                                            hintText: 'Type product name or category...',
+                                            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                                            prefixIcon: const Icon(Icons.search, color: Color(0xFF10B981)),
+                                            suffixIcon: selectedProductId != null
+                                                ? Container(
+                                                    margin: const EdgeInsets.all(8),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                                                      borderRadius: BorderRadius.circular(4),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Icon(Icons.check_circle,
+                                                          color: const Color(0xFF10B981),
+                                                          size: 16
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          'Selected',
+                                                          style: TextStyle(
+                                                            color: const Color(0xFF10B981),
+                                                            fontSize: 12,
+                                                            fontWeight: FontWeight.w600,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  )
+                                                : null,
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                              borderSide: BorderSide(color: Colors.grey.shade300),
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                              borderSide: BorderSide(color: Colors.grey.shade300),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                              borderSide: const BorderSide(color: Color(0xFF10B981), width: 2),
+                                            ),
+                                            filled: true,
+                                            fillColor: Colors.grey.shade50,
+                                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                                           ),
-                                        );
-                                      }).toList(),
-                                      onChanged: (value) {
-                                        setState(() {
-                                          selectedProductId = value;
-                                        });
-                                      },
+                                        ),
+                                        if (_showProductSuggestions)
+                                          _buildProductSuggestions(products),
+                                      ],
                                     ),
                                   ),
                                   const SizedBox(width: 12),
@@ -469,6 +521,61 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildProductSuggestions(List<dynamic> products) {
+    final filteredProducts = products.where((product) {
+      return product.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          product.category.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
+
+    if (filteredProducts.isEmpty || _searchQuery.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      constraints: const BoxConstraints(maxHeight: 200),
+      child: ListView.builder(
+        padding: EdgeInsets.zero,
+        shrinkWrap: true,
+        itemCount: filteredProducts.length,
+        itemBuilder: (context, index) {
+          final product = filteredProducts[index];
+          return ListTile(
+            dense: true,
+            title: Text(
+              product.name,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(
+              '${product.category} • \$${product.sellingPrice.toStringAsFixed(2)} • Stock: ${product.quantity}',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+            onTap: () {
+              setState(() {
+                selectedProductId = product.id;
+                _searchController.text = product.name;
+                _showProductSuggestions = false;
+                _searchQuery = '';
+              });
+            },
+          );
+        },
       ),
     );
   }

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/product.dart';
 import '../providers/inventory_provider.dart';
-import 'edit_product_screen.dart';
+import '../widgets/edit_product_dialog.dart';
 import '../widgets/qr_code_display_dialog.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
@@ -347,11 +347,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                         icon: const Icon(Icons.edit, size: 20),
                                         color: const Color(0xFF3B82F6),
                                         onPressed: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) => EditProductScreen(product: product),
-                                            ),
+                                          showDialog(
+                                            context: context,
+                                            builder: (context) => EditProductDialog(product: product),
                                           );
                                         },
                                         tooltip: 'Edit',

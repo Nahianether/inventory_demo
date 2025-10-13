@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/inventory_provider.dart';
 import '../models/product.dart';
+import '../widgets/qr_scanner_dialog.dart';
 
 class AddProductScreen extends ConsumerStatefulWidget {
   const AddProductScreen({super.key});
@@ -65,6 +66,38 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
       _showProductSuggestions = false;
       _quantityController.clear(); // Clear quantity as user needs to enter new stock
     });
+  }
+
+  Future<void> _scanQRCode() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => const QRScannerDialog(),
+    );
+
+    if (result != null && mounted) {
+      // The QR code contains the product ID
+      final product = ref.read(productProvider.notifier).getProductById(result);
+      if (product != null) {
+        _selectProduct(product);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Product "${product.name}" selected for restocking'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Product not found'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      }
+    }
   }
 
   void _saveProduct() async {
@@ -187,15 +220,42 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Row 1: Product Name & Category
+                      // Row 1: Product Name with QR Scanner & Category
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _buildProductNameField(allProducts),
-                                if (_showProductSuggestions) _buildProductSuggestions(allProducts),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          _buildProductNameField(allProducts),
+                                          if (_showProductSuggestions) _buildProductSuggestions(allProducts),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Container(
+                                      height: 56,
+                                      width: 56,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF6366F1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: IconButton(
+                                        onPressed: _scanQRCode,
+                                        icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+                                        tooltip: 'Scan QR Code',
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ],
                             ),
                           ),

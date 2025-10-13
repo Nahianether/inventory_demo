@@ -52,6 +52,11 @@ dependencies:
   qr_flutter: ^4.1.0
   mobile_scanner: ^5.2.3
 
+  # For screenshot and download functionality
+  screenshot: ^3.0.0
+  path_provider: ^2.1.5
+  universal_html: ^2.2.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

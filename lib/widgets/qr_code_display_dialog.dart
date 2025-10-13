@@ -1,11 +1,80 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:screenshot/screenshot.dart';
+import 'dart:typed_data';
+import 'package:universal_html/html.dart' as html;
 import '../models/product.dart';
 
-class QRCodeDisplayDialog extends StatelessWidget {
+class QRCodeDisplayDialog extends StatefulWidget {
   final Product product;
 
   const QRCodeDisplayDialog({super.key, required this.product});
+
+  @override
+  State<QRCodeDisplayDialog> createState() => _QRCodeDisplayDialogState();
+}
+
+class _QRCodeDisplayDialogState extends State<QRCodeDisplayDialog> {
+  final ScreenshotController _screenshotController = ScreenshotController();
+
+  Future<void> _downloadQRCode() async {
+    try {
+      // Capture the QR code as an image
+      final Uint8List? imageBytes = await _screenshotController.capture();
+
+      if (imageBytes == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Failed to generate QR code image'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Create a blob from the image bytes
+      final blob = html.Blob([imageBytes]);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+
+      // Create a download link and trigger it
+      html.AnchorElement(href: url)
+        ..setAttribute('download', 'QR_${widget.product.name.replaceAll(' ', '_')}.png')
+        ..click();
+
+      // Clean up
+      html.Url.revokeObjectUrl(url);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('QR code downloaded: ${widget.product.name}'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error downloading QR code: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      }
+    }
+  }
+
+  void _printQRCode() {
+    html.window.print();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +91,7 @@ class QRCodeDisplayDialog extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    product.name,
+                    widget.product.name,
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -46,18 +115,44 @@ class QRCodeDisplayDialog extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300, width: 2),
-              ),
-              child: QrImageView(
-                data: product.id,
-                version: QrVersions.auto,
-                size: 250,
-                backgroundColor: Colors.white,
+            Screenshot(
+              controller: _screenshotController,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300, width: 2),
+                ),
+                child: Column(
+                  children: [
+                    QrImageView(
+                      data: widget.product.id,
+                      version: QrVersions.auto,
+                      size: 250,
+                      backgroundColor: Colors.white,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      widget.product.name,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade900,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.product.category,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 24),
@@ -85,13 +180,43 @@ class QRCodeDisplayDialog extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  _buildDetailRow('Category', product.category),
+                  _buildDetailRow('Category', widget.product.category),
                   const SizedBox(height: 6),
-                  _buildDetailRow('Price', '\$${product.sellingPrice.toStringAsFixed(2)}'),
+                  _buildDetailRow('Price', '\$${widget.product.sellingPrice.toStringAsFixed(2)}'),
                   const SizedBox(height: 6),
-                  _buildDetailRow('Stock', '${product.quantity} units'),
+                  _buildDetailRow('Stock', '${widget.product.quantity} units'),
                 ],
               ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _printQRCode,
+                    icon: const Icon(Icons.print),
+                    label: const Text('Print'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: BorderSide(color: Colors.grey.shade300),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _downloadQRCode,
+                    icon: const Icon(Icons.download),
+                    label: const Text('Download'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF10B981),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
