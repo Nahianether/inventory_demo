@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../models/product.dart';
 import '../models/transaction.dart';
 import '../models/account.dart';
+import '../models/category.dart';
 
 // Product provider - manages all products
 final productProvider = StateNotifierProvider<ProductNotifier, List<Product>>((ref) {
@@ -208,3 +209,79 @@ final outOfStockProductsProvider = Provider<List<Product>>((ref) {
   final products = ref.watch(productProvider);
   return products.where((p) => !p.isInStock).toList();
 });
+
+// Category provider - manages all categories
+final categoryProvider = StateNotifierProvider<CategoryNotifier, List<Category>>((ref) {
+  return CategoryNotifier();
+});
+
+class CategoryNotifier extends StateNotifier<List<Category>> {
+  CategoryNotifier() : super([]) {
+    _loadCategories();
+  }
+
+  Box<Category>? _categoryBox;
+
+  Future<void> _loadCategories() async {
+    _categoryBox = await Hive.openBox<Category>('categories');
+    state = _categoryBox!.values.toList();
+  }
+
+  Future<Category> addCategory({
+    required String name,
+    String? description,
+  }) async {
+    final category = Category(
+      id: const Uuid().v4(),
+      name: name,
+      description: description,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+
+    await _categoryBox?.put(category.id, category);
+    state = [...state, category];
+    return category;
+  }
+
+  Future<void> updateCategory(Category category) async {
+    final updatedCategory = category.copyWith(updatedAt: DateTime.now());
+    await _categoryBox?.put(updatedCategory.id, updatedCategory);
+    state = [
+      for (final c in state)
+        if (c.id == updatedCategory.id) updatedCategory else c,
+    ];
+  }
+
+  Future<bool> deleteCategory(String categoryId) async {
+    // Check if category is in use by any products
+    final productBox = await Hive.openBox<Product>('products');
+    final productsUsingCategory = productBox.values
+        .where((product) => product.category == getCategoryById(categoryId)?.name)
+        .toList();
+
+    if (productsUsingCategory.isNotEmpty) {
+      return false; // Cannot delete category that's in use
+    }
+
+    await _categoryBox?.delete(categoryId);
+    state = state.where((c) => c.id != categoryId).toList();
+    return true;
+  }
+
+  Category? getCategoryById(String categoryId) {
+    try {
+      return state.firstWhere((c) => c.id == categoryId);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Category? getCategoryByName(String categoryName) {
+    try {
+      return state.firstWhere((c) => c.name.toLowerCase() == categoryName.toLowerCase());
+    } catch (e) {
+      return null;
+    }
+  }
+}

@@ -271,20 +271,15 @@ class _EditProductDialogState extends ConsumerState<EditProductDialog> {
   }
 
   Widget _buildCategoryField() {
-    final products = ref.watch(productProvider);
-    final existingCategories = products
-        .where((p) => p.id != widget.product.id)
-        .map((p) => p.category)
-        .toSet()
-        .toList()
-      ..sort();
+    final categories = ref.watch(categoryProvider);
+    final categoryNames = categories.map((c) => c.name).toList()..sort();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (!_isTypingCategory && existingCategories.isNotEmpty)
+        if (!_isTypingCategory && categoryNames.isNotEmpty)
           DropdownButtonFormField<String>(
-            value: existingCategories.contains(_categoryController.text) ? _categoryController.text : null,
+            value: categoryNames.contains(_categoryController.text) ? _categoryController.text : null,
             decoration: InputDecoration(
               labelText: 'Category',
               labelStyle: TextStyle(color: Colors.grey.shade700, fontSize: 14),
@@ -318,8 +313,8 @@ class _EditProductDialogState extends ConsumerState<EditProductDialog> {
               _categoryController.text.isNotEmpty ? _categoryController.text : 'Select category',
               style: const TextStyle(fontSize: 14),
             ),
-            items: existingCategories.map((category) {
-              return DropdownMenuItem(value: category, child: Text(category, style: const TextStyle(fontSize: 14)));
+            items: categoryNames.map((categoryName) {
+              return DropdownMenuItem(value: categoryName, child: Text(categoryName, style: const TextStyle(fontSize: 14)));
             }).toList(),
             onChanged: (value) {
               setState(() {
@@ -340,10 +335,10 @@ class _EditProductDialogState extends ConsumerState<EditProductDialog> {
             decoration: InputDecoration(
               labelText: 'Category',
               labelStyle: TextStyle(color: Colors.grey.shade700, fontSize: 14),
-              hintText: 'e.g., Helmet, Tire, Chain',
+              hintText: 'Type category name or go to Categories to add',
               hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
               prefixIcon: const Icon(Icons.category, color: Color(0xFF3B82F6), size: 20),
-              suffixIcon: existingCategories.isNotEmpty
+              suffixIcon: categoryNames.isNotEmpty
                   ? IconButton(
                       icon: const Icon(Icons.arrow_drop_down, size: 22),
                       tooltip: 'Select from existing',

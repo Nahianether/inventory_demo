@@ -112,6 +112,12 @@ class _AppLayoutState extends State<AppLayout> {
                         isActive: widget.currentRoute == '/inventory',
                       ),
                       _buildNavItem(
+                        icon: Icons.category_rounded,
+                        label: 'Categories',
+                        route: '/categories',
+                        isActive: widget.currentRoute == '/categories',
+                      ),
+                      _buildNavItem(
                         icon: Icons.shopping_cart_rounded,
                         label: 'Purchase',
                         route: '/purchase',

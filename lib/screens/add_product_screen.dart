@@ -102,6 +102,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
 
   void _saveProduct() async {
     if (_formKey.currentState!.validate()) {
+      // Unfocus to dismiss keyboard and trigger any pending updates
+      FocusScope.of(context).unfocus();
+
       final quantity = int.parse(_quantityController.text);
 
       if (_selectedExistingProduct != null) {
@@ -159,18 +162,23 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
 
       // Clear form after save
       if (mounted) {
+        // Clear all controllers first
+        _nameController.clear();
+        _categoryController.clear();
+        _buyingPriceController.clear();
+        _sellingPriceController.clear();
+        _quantityController.clear();
+        _descriptionController.clear();
+
+        // Reset form state
+        _formKey.currentState?.reset();
+
+        // Update UI state
         setState(() {
-          _nameController.clear();
-          _categoryController.clear();
-          _buyingPriceController.clear();
-          _sellingPriceController.clear();
-          _quantityController.clear();
-          _descriptionController.clear();
           _isTypingCategory = false;
           _selectedExistingProduct = null;
           _showProductSuggestions = false;
         });
-        _formKey.currentState?.reset();
       }
     }
   }
@@ -528,17 +536,17 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
   }
 
   Widget _buildCategoryField() {
-    final products = ref.watch(productProvider);
-    final existingCategories = products.map((p) => p.category).toSet().toList()..sort();
+    final categories = ref.watch(categoryProvider);
+    final categoryNames = categories.map((c) => c.name).toList()..sort();
 
-    final dropdownValue = _categoryController.text.isEmpty || !existingCategories.contains(_categoryController.text)
+    final dropdownValue = _categoryController.text.isEmpty || !categoryNames.contains(_categoryController.text)
         ? null
         : _categoryController.text;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (!_isTypingCategory && existingCategories.isNotEmpty)
+        if (!_isTypingCategory && categoryNames.isNotEmpty)
           DropdownButtonFormField<String>(
             value: dropdownValue,
             decoration: InputDecoration(
@@ -579,8 +587,8 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             ),
             hint: const Text('Select or type category'),
-            items: existingCategories.map((category) {
-              return DropdownMenuItem(value: category, child: Text(category));
+            items: categoryNames.map((categoryName) {
+              return DropdownMenuItem(value: categoryName, child: Text(categoryName));
             }).toList(),
             onChanged: (value) {
               setState(() {
@@ -600,11 +608,11 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
             style: const TextStyle(fontSize: 15),
             decoration: InputDecoration(
               labelText: 'Category',
-              hintText: 'e.g., Helmet, Tire, Chain',
+              hintText: 'Type category name or go to Categories to add',
               hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
               labelStyle: TextStyle(color: Colors.grey.shade700),
               prefixIcon: const Icon(Icons.category, color: Color(0xFF6366F1), size: 20),
-              suffixIcon: existingCategories.isNotEmpty
+              suffixIcon: categoryNames.isNotEmpty
                   ? IconButton(
                       icon: const Icon(Icons.arrow_drop_down, size: 24),
                       tooltip: 'Select from existing',
