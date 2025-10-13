@@ -107,41 +107,56 @@ class HomeScreen extends ConsumerWidget {
 
             // Low Stock Alert
             if (lowStockProducts.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => Navigator.pushReplacementNamed(context, '/inventory'),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.orange.shade300, width: 2),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 2)),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(10)),
-                      child: Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700, size: 28),
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.orange.shade300, width: 2),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 2)),
+                      ],
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Low Stock Alert',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade900, fontSize: 18),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(10)),
+                          child: Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700, size: 28),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Low Stock Alert',
+                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade900, fontSize: 18),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${lowStockProducts.length} product(s) need restocking',
+                                style: TextStyle(color: Colors.orange.shade700, fontSize: 14),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                lowStockProducts.map((p) => '${p.name} (${p.quantity})').join(', '),
+                                style: TextStyle(color: Colors.orange.shade800, fontSize: 13, fontWeight: FontWeight.w500),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${lowStockProducts.length} product(s) need restocking',
-                            style: TextStyle(color: Colors.orange.shade700, fontSize: 14),
-                          ),
-                        ],
-                      ),
+                        ),
+                        Icon(Icons.arrow_forward_ios, color: Colors.orange.shade700, size: 20),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
 
