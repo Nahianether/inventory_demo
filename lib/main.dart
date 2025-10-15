@@ -14,6 +14,7 @@ import 'screens/sale_screen.dart';
 import 'screens/account_screen.dart';
 import 'screens/category_screen.dart';
 import 'widgets/app_layout.dart';
+import 'providers/inventory_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,7 +31,10 @@ void main() async {
   // Migrate existing product categories to Category entities
   await _migrateCategories();
 
-  runApp(const ProviderScope(child: MyApp()));
+  runApp(ProviderScope(
+    child: MyApp(),
+    overrides: [],
+  ));
 }
 
 Future<void> _migrateCategories() async {
@@ -64,8 +68,22 @@ Future<void> _migrateCategories() async {
   }
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
+
+  @override
+  ConsumerState<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends ConsumerState<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    // Set up callback to reload categories when product creates a new category
+    ProductNotifier.onCategoryCreated = () {
+      ref.read(categoryProvider.notifier).reloadCategories();
+    };
+  }
 
   @override
   Widget build(BuildContext context) {

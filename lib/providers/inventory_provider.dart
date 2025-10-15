@@ -5,6 +5,10 @@ import '../models/product.dart';
 import '../models/transaction.dart';
 import '../models/account.dart';
 import '../models/category.dart';
+import '../services/inventory_api_service.dart';
+import '../models/api/api_product.dart';
+import '../models/api/api_category.dart';
+import 'package:flutter/material.dart';
 
 // Product provider - manages all products
 final productProvider = StateNotifierProvider<ProductNotifier, List<Product>>((ref) {
@@ -17,6 +21,10 @@ class ProductNotifier extends StateNotifier<List<Product>> {
   }
 
   Box<Product>? _productBox;
+  final InventoryApiService _apiService = InventoryApiService();
+
+  // Callback to notify category changes
+  static void Function()? onCategoryCreated;
 
   Future<void> _loadProducts() async {
     _productBox = await Hive.openBox<Product>('products');
@@ -43,9 +51,99 @@ class ProductNotifier extends StateNotifier<List<Product>> {
       updatedAt: DateTime.now(),
     );
 
+    // Save to local Hive first
     await _productBox?.put(product.id, product);
     state = [...state, product];
+
+    // Try to send to API in background
+    _sendProductToApi(product, category);
+
     return product;
+  }
+
+  void _sendProductToApi(Product product, String categoryName) async {
+    try {
+      // Get or create category
+      String categoryId;
+
+      // First check if category exists locally
+      final categoryBox = await Hive.openBox<Category>('categories');
+      final localCategory = categoryBox.values.firstWhere(
+        (cat) => cat.name.toLowerCase() == categoryName.toLowerCase(),
+        orElse: () => Category(
+          id: '',
+          name: '',
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        ),
+      );
+
+      if (localCategory.id.isEmpty) {
+        // Category doesn't exist locally, create it
+        final newLocalCategory = Category(
+          id: const Uuid().v4(),
+          name: categoryName,
+          description: 'Auto-created',
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+        await categoryBox.put(newLocalCategory.id, newLocalCategory);
+        debugPrint('✓ Category created locally: $categoryName');
+
+        // Notify category provider to reload
+        onCategoryCreated?.call();
+      }
+
+      // Now check API
+      try {
+        final categories = await _apiService.getCategories();
+        final category = categories.firstWhere(
+          (cat) => cat.name.toLowerCase() == categoryName.toLowerCase(),
+        );
+        categoryId = category.id;
+      } catch (e) {
+        // Category doesn't exist on API, create it
+        debugPrint('Category "$categoryName" not found on API, creating...');
+        final newCategory = await _apiService.createCategory(
+          CreateCategoryRequest(
+            name: categoryName,
+            description: 'Auto-created from local data',
+          ),
+        );
+        categoryId = newCategory.id;
+        debugPrint('✓ Category created on API: $categoryName');
+      }
+
+      // Generate SKU
+      final sku = _generateSKU(product.name);
+
+      // Send to API
+      final request = CreateProductRequest(
+        name: product.name,
+        description: product.description?.isNotEmpty == true ? product.description : null,
+        sku: sku,
+        price: product.sellingPrice,
+        costPrice: product.buyingPrice,
+        categoryId: categoryId,
+        initialStock: product.quantity,
+      );
+
+      debugPrint('Creating product with data: ${request.toJson()}');
+
+      await _apiService.createProduct(request);
+      debugPrint('✓ Product sent to API: ${product.name}');
+    } catch (e) {
+      debugPrint('⚠️ Failed to send product to API: $e');
+      // Product is still saved locally, user can sync manually later
+    }
+  }
+
+  String _generateSKU(String productName) {
+    final prefix = productName.length >= 3
+        ? productName.substring(0, 3).toUpperCase().replaceAll(RegExp(r'[^A-Z]'), '')
+        : 'PRD';
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    return '$prefix-$timestamp';
   }
 
   Future<void> updateProduct(Product product) async {
@@ -55,11 +153,43 @@ class ProductNotifier extends StateNotifier<List<Product>> {
       for (final p in state)
         if (p.id == updatedProduct.id) updatedProduct else p,
     ];
+
+    // Try to update on API in background
+    _updateProductOnApi(updatedProduct);
+  }
+
+  void _updateProductOnApi(Product product) async {
+    try {
+      await _apiService.updateProduct(
+        product.id,
+        UpdateProductRequest(
+          name: product.name,
+          description: product.description,
+          price: product.sellingPrice,
+          costPrice: product.buyingPrice,
+        ),
+      );
+      debugPrint('✓ Product updated on API: ${product.name}');
+    } catch (e) {
+      debugPrint('⚠️ Failed to update product on API: $e');
+    }
   }
 
   Future<void> deleteProduct(String productId) async {
     await _productBox?.delete(productId);
     state = state.where((p) => p.id != productId).toList();
+
+    // Try to delete on API in background
+    _deleteProductOnApi(productId);
+  }
+
+  void _deleteProductOnApi(String productId) async {
+    try {
+      await _apiService.deleteProduct(productId);
+      debugPrint('✓ Product deleted on API: $productId');
+    } catch (e) {
+      debugPrint('⚠️ Failed to delete product on API: $e');
+    }
   }
 
   Future<void> updateProductQuantity(String productId, int newQuantity) async {
@@ -221,10 +351,16 @@ class CategoryNotifier extends StateNotifier<List<Category>> {
   }
 
   Box<Category>? _categoryBox;
+  final InventoryApiService _apiService = InventoryApiService();
 
   Future<void> _loadCategories() async {
     _categoryBox = await Hive.openBox<Category>('categories');
     state = _categoryBox!.values.toList();
+  }
+
+  // Public method to reload categories from Hive
+  Future<void> reloadCategories() async {
+    await _loadCategories();
   }
 
   Future<Category> addCategory({
@@ -239,9 +375,28 @@ class CategoryNotifier extends StateNotifier<List<Category>> {
       updatedAt: DateTime.now(),
     );
 
+    // Save to local Hive first
     await _categoryBox?.put(category.id, category);
     state = [...state, category];
+
+    // Try to send to API in background
+    _sendCategoryToApi(category);
+
     return category;
+  }
+
+  void _sendCategoryToApi(Category category) async {
+    try {
+      await _apiService.createCategory(
+        CreateCategoryRequest(
+          name: category.name,
+          description: category.description,
+        ),
+      );
+      debugPrint('✓ Category sent to API: ${category.name}');
+    } catch (e) {
+      debugPrint('⚠️ Failed to send category to API: $e');
+    }
   }
 
   Future<void> updateCategory(Category category) async {

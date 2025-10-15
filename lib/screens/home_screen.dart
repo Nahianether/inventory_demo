@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/inventory_provider.dart';
+import '../widgets/sync_button.dart';
+import '../widgets/full_sync_button.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -15,6 +17,7 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
+      floatingActionButton: const SyncButton(),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -38,6 +41,7 @@ class HomeScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
+                const FullSyncButton(),
               ],
             ),
             const SizedBox(height: 32),

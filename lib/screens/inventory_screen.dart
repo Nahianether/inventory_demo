@@ -4,6 +4,7 @@ import '../models/product.dart';
 import '../providers/inventory_provider.dart';
 import '../widgets/edit_product_dialog.dart';
 import '../widgets/qr_code_display_dialog.dart';
+import '../widgets/sync_button.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key});
@@ -34,6 +35,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
+      floatingActionButton: const SyncButton(),
       body: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
