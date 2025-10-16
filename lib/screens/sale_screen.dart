@@ -117,6 +117,7 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
       return;
     }
 
+    // Update local inventory first
     await ref.read(productProvider.notifier).updateProductQuantity(selectedProductId!, product.quantity - quantity);
 
     final saleAmount = product.sellingPrice * quantity;
