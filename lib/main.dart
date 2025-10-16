@@ -5,7 +5,11 @@ import 'screens/api_inventory_screen.dart';
 import 'screens/api_sale_screen.dart';
 import 'screens/api_purchase_screen.dart';
 import 'screens/api_category_screen.dart';
+import 'screens/api_account_enhanced_screen.dart';
+import 'screens/api_reports_screen.dart';
+import 'screens/settings_screen.dart';
 import 'widgets/app_layout.dart';
+import 'utils/page_transitions.dart';
 
 // Old imports commented out for pure API approach
 // import 'package:hive_flutter/hive_flutter.dart';
@@ -95,24 +99,56 @@ class _MyAppState extends ConsumerState<MyApp> {
     return MaterialApp(
       title: 'Inventory Management System',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple), useMaterial3: true),
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
+            TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+          },
+        ),
+      ),
       initialRoute: '/api-home',
-      routes: {
-        // Pure API routes (active)
-        '/': (context) => const AppLayout(currentRoute: '/api-home', child: ApiHomeScreen()), // Redirect / to API home
-        '/api-home': (context) => const AppLayout(currentRoute: '/api-home', child: ApiHomeScreen()),
-        '/api-inventory': (context) => const AppLayout(currentRoute: '/api-inventory', child: ApiInventoryScreen()),
-        '/api-sale': (context) => const AppLayout(currentRoute: '/api-sale', child: ApiSaleScreen()),
-        '/api-purchase': (context) => const AppLayout(currentRoute: '/api-purchase', child: ApiPurchaseScreen()),
-        '/api-categories': (context) => const AppLayout(currentRoute: '/api-categories', child: ApiCategoryScreen()),
+      onGenerateRoute: (settings) {
+        // Custom route generator with smooth transitions
+        Widget page;
 
-        // Old Hive-based routes (commented out - won't work without Hive)
-        // '/inventory': (context) => const AppLayout(currentRoute: '/inventory', child: InventoryScreen()),
-        // '/categories': (context) => const AppLayout(currentRoute: '/categories', child: CategoryScreen()),
-        // '/add-product': (context) => const AppLayout(currentRoute: '/add-product', child: AddProductScreen()),
-        // '/purchase': (context) => const AppLayout(currentRoute: '/purchase', child: PurchaseScreen()),
-        // '/sale': (context) => const AppLayout(currentRoute: '/sale', child: SaleScreen()),
-        // '/account': (context) => const AppLayout(currentRoute: '/account', child: AccountScreen()),
+        switch (settings.name) {
+          case '/':
+          case '/api-home':
+            page = const AppLayout(currentRoute: '/api-home', child: ApiHomeScreen());
+            break;
+          case '/api-inventory':
+            page = const AppLayout(currentRoute: '/api-inventory', child: ApiInventoryScreen());
+            break;
+          case '/api-sale':
+            page = const AppLayout(currentRoute: '/api-sale', child: ApiSaleScreen());
+            break;
+          case '/api-purchase':
+            page = const AppLayout(currentRoute: '/api-purchase', child: ApiPurchaseScreen());
+            break;
+          case '/api-categories':
+            page = const AppLayout(currentRoute: '/api-categories', child: ApiCategoryScreen());
+            break;
+          case '/api-account':
+            page = const AppLayout(currentRoute: '/api-account', child: ApiAccountEnhancedScreen());
+            break;
+          case '/api-reports':
+            page = const AppLayout(currentRoute: '/api-reports', child: ApiReportsScreen());
+            break;
+          case '/settings':
+            page = const AppLayout(currentRoute: '/settings', child: SettingsScreen());
+            break;
+          default:
+            page = const AppLayout(currentRoute: '/api-home', child: ApiHomeScreen());
+        }
+
+        // Use smooth fade with slide transition for all routes
+        return PageTransitions.fadeWithSlide(page);
       },
     );
   }

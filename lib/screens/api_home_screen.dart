@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/api_providers.dart';
+import '../utils/currency_helper.dart';
 
 class ApiHomeScreen extends ConsumerWidget {
   const ApiHomeScreen({super.key});
@@ -110,6 +111,7 @@ class ApiHomeScreen extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: _buildStatCard(
+                      ref,
                       'Products',
                       products.length.toString(),
                       Icons.inventory_2,
@@ -121,6 +123,7 @@ class ApiHomeScreen extends ConsumerWidget {
                   Expanded(
                     child: categoriesAsync.when(
                       data: (categories) => _buildStatCard(
+                        ref,
                         'Categories',
                         categories.length.toString(),
                         Icons.category,
@@ -128,6 +131,7 @@ class ApiHomeScreen extends ConsumerWidget {
                         'Active categories',
                       ),
                       loading: () => _buildStatCard(
+                        ref,
                         'Categories',
                         '...',
                         Icons.category,
@@ -135,6 +139,7 @@ class ApiHomeScreen extends ConsumerWidget {
                         'Loading...',
                       ),
                       error: (_, __) => _buildStatCard(
+                        ref,
                         'Categories',
                         'Error',
                         Icons.category,
@@ -146,8 +151,9 @@ class ApiHomeScreen extends ConsumerWidget {
                   const SizedBox(width: 16),
                   Expanded(
                     child: _buildStatCard(
+                      ref,
                       'Inventory Value',
-                      '\$${totalInventoryValue.toStringAsFixed(0)}',
+                      totalInventoryValue.toCurrencyCompact(ref),
                       Icons.store,
                       const Color(0xFFF59E0B),
                       'Total cost',
@@ -156,8 +162,9 @@ class ApiHomeScreen extends ConsumerWidget {
                   const SizedBox(width: 16),
                   Expanded(
                     child: _buildStatCard(
+                      ref,
                       'Potential Revenue',
-                      '\$${potentialRevenue.toStringAsFixed(0)}',
+                      potentialRevenue.toCurrencyCompact(ref),
                       Icons.trending_up,
                       const Color(0xFF10B981),
                       'Selling all stock',
@@ -279,7 +286,7 @@ class ApiHomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildStatCard(String label, String value, IconData icon, Color color, String subtitle) {
+  Widget _buildStatCard(WidgetRef ref, String label, String value, IconData icon, Color color, String subtitle) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(

@@ -129,6 +129,54 @@ class _AppLayoutState extends State<AppLayout> {
                         route: '/api-sale',
                         isActive: widget.currentRoute == '/api-sale',
                       ),
+                      const SizedBox(height: 8),
+                      if (!_isCollapsed)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          child: Text(
+                            'REPORTS',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.5),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ),
+                      if (_isCollapsed) const Divider(color: Colors.white24, height: 20),
+                      _buildNavItem(
+                        icon: Icons.account_balance_wallet_rounded,
+                        label: 'Account',
+                        route: '/api-account',
+                        isActive: widget.currentRoute == '/api-account',
+                      ),
+                      _buildNavItem(
+                        icon: Icons.analytics_rounded,
+                        label: 'Reports',
+                        route: '/api-reports',
+                        isActive: widget.currentRoute == '/api-reports',
+                      ),
+                      const SizedBox(height: 8),
+                      if (!_isCollapsed)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          child: Text(
+                            'PREFERENCES',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.5),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ),
+                      if (_isCollapsed) const Divider(color: Colors.white24, height: 20),
+                      _buildNavItem(
+                        icon: Icons.settings_rounded,
+                        label: 'Settings',
+                        route: '/settings',
+                        isActive: widget.currentRoute == '/settings',
+                      ),
                     ],
                   ),
                 ),
@@ -207,7 +255,12 @@ class _AppLayoutState extends State<AppLayout> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => Navigator.pushReplacementNamed(context, route),
+          onTap: () {
+            if (!isActive) {
+              // Use smooth fade transition for navigation
+              Navigator.of(context).pushReplacementNamed(route);
+            }
+          },
           borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: EdgeInsets.symmetric(
