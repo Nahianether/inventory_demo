@@ -190,17 +190,17 @@ class _ApiAccountEnhancedScreenState extends ConsumerState<ApiAccountEnhancedScr
         Expanded(
           child: _buildStatCard(
             'Total Sales',
-            stats.totalSales.toCurrency(ref),
+            CurrencyHelper.format(ref, stats.totalSales),
             Icons.point_of_sale,
             const Color(0xFF10B981),
-            '${stats.avgTransactionValue.toCurrency(ref)} avg',
+            '${CurrencyHelper.format(ref, stats.avgTransactionValue)} avg',
           ),
         ),
         const SizedBox(width: 16),
         Expanded(
           child: _buildStatCard(
             'Total Profit',
-            stats.totalProfit.toCurrency(ref),
+            CurrencyHelper.format(ref, stats.totalProfit),
             Icons.trending_up,
             const Color(0xFF3B82F6),
             '${((stats.totalProfit / (stats.totalSales > 0 ? stats.totalSales : 1)) * 100).toStringAsFixed(1)}% margin',
@@ -226,17 +226,17 @@ class _ApiAccountEnhancedScreenState extends ConsumerState<ApiAccountEnhancedScr
         Expanded(
           child: _buildStatCard(
             'Inventory Value',
-            financial.totalInventoryValue.toCurrency(ref),
+            CurrencyHelper.format(ref, financial.totalInventoryValue),
             Icons.inventory_2,
             const Color(0xFF3B82F6),
-            'Cost: ${financial.totalCostValue.toCurrency(ref)}',
+            'Cost: ${CurrencyHelper.format(ref, financial.totalCostValue)}',
           ),
         ),
         const SizedBox(width: 16),
         Expanded(
           child: _buildStatCard(
             'Potential Revenue',
-            financial.potentialRevenue.toCurrency(ref),
+            CurrencyHelper.format(ref, financial.potentialRevenue),
             Icons.attach_money,
             const Color(0xFF10B981),
             'If all sold',
@@ -246,7 +246,7 @@ class _ApiAccountEnhancedScreenState extends ConsumerState<ApiAccountEnhancedScr
         Expanded(
           child: _buildStatCard(
             'Potential Profit',
-            financial.potentialProfit.toCurrency(ref),
+            CurrencyHelper.format(ref, financial.potentialProfit),
             Icons.trending_up,
             financial.potentialProfit >= 0
                 ? const Color(0xFF10B981)
@@ -517,7 +517,7 @@ class _ApiAccountEnhancedScreenState extends ConsumerState<ApiAccountEnhancedScr
                         style: const TextStyle(fontSize: 14),
                       )),
                       DataCell(Text(
-                        transaction.total.toCurrency(ref),
+                        CurrencyHelper.format(ref, transaction.total),
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -525,7 +525,7 @@ class _ApiAccountEnhancedScreenState extends ConsumerState<ApiAccountEnhancedScr
                         ),
                       )),
                       DataCell(Text(
-                        transaction.profit.toCurrency(ref),
+                        CurrencyHelper.format(ref, transaction.profit),
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
